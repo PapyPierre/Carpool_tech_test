@@ -1,8 +1,4 @@
-use crate::{
-    errors::AppError, 
-    models::*, 
-    state::SharedState
-};
+use crate::{errors::AppError, models::*, state::SharedState};
 use axum::{
     extract::{Json, State},
     http::HeaderMap,
@@ -25,6 +21,8 @@ pub async fn send_friend_request(
 ) -> Result<(), AppError> {
     let user_id = extract_user_id(&headers)?;
     let target_id = payload.target_id;
+
+    println!("Received request from {0} to {1}", user_id, target_id);
 
     if user_id == target_id {
         return Err(AppError::BadRequest(
@@ -58,6 +56,11 @@ pub async fn respond_to_friend_request(
 ) -> Result<(), AppError> {
     let user_id = extract_user_id(&headers)?;
     let requester_id = payload.requester_id;
+
+    println!(
+        "Received response from {0} to {1} request",
+        user_id, requester_id
+    );
 
     let mut app_state = state
         .lock()
@@ -97,6 +100,8 @@ pub async fn list_friends(
 ) -> Result<Json<FriendsList>, AppError> {
     let user_id = extract_user_id(&headers)?;
 
+    println!("Received list_friends from {0}", user_id);
+
     let app_state = state
         .lock()
         .map_err(|_| AppError::Internal("State lock poisoned".into()))?;
@@ -115,6 +120,8 @@ pub async fn list_pending(
     headers: HeaderMap,
 ) -> Result<Json<PendingList>, AppError> {
     let user_id = extract_user_id(&headers)?;
+
+    println!("Received list_pending from {0}", user_id);
 
     let app_state = state
         .lock()
