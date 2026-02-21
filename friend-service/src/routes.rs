@@ -1,6 +1,9 @@
-use axum::{routing::{get, post}, Router};
 use crate::handlers::*;
 use crate::state::SharedState;
+use axum::{
+    Router,
+    routing::{get, post},
+};
 
 pub fn create_router(state: SharedState) -> Router {
     Router::new()

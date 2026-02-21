@@ -1,13 +1,13 @@
-use crate::models::FriendRequest;
+use crate::{
+    errors::AppError, 
+    models::*, 
+    state::SharedState
+};
 use axum::{
-    extract::{State, Json},
+    extract::{Json, State},
     http::HeaderMap,
 };
-use crate::{state::SharedState, models::*, errors::AppError, state::AppState};
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
 
 fn extract_user_id(headers: &HeaderMap) -> Result<String, AppError> {
     headers
@@ -19,46 +19,26 @@ fn extract_user_id(headers: &HeaderMap) -> Result<String, AppError> {
 }
 
 pub async fn send_friend_request(
-    State(state): State<Arc<Mutex<crate::state::AppState>>>,
+    State(state): State<SharedState>,
     headers: HeaderMap,
     Json(payload): Json<FriendRequest>,
-) -> impl IntoResponse {
-
-    let user_id = match headers.get("X-User-Id") {
-        Some(value) => match value.to_str() {
-            Ok(v) => v.to_string(),
-            Err(_) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    "Invalid X-User-Id header",
-                )
-            }
-        },
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                "Missing X-User-Id header",
-            )
-        }
-    };
-
+) -> Result<(), AppError> {
+    let user_id = extract_user_id(&headers)?;
     let target_id = payload.target_id;
 
     if user_id == target_id {
-        return (
-            StatusCode::BAD_REQUEST,
-            "Cannot send friend request to yourself",
-        );
+        return Err(AppError::BadRequest(
+            "Cannot send friend request to yourself".into(),
+        ));
     }
 
-    let mut app_state = state.lock().unwrap();
+    let mut app_state = state
+        .lock()
+        .map_err(|_| AppError::Internal("State lock poisoned".into()))?;
 
     if let Some(friends) = app_state.friends.get(&user_id) {
         if friends.contains(&target_id) {
-            return (
-                StatusCode::CONFLICT,
-                "Already friends",
-            );
+            return Err(AppError::Conflict("Already friends".into()));
         }
     }
 
@@ -68,41 +48,29 @@ pub async fn send_friend_request(
         .or_insert_with(HashSet::new)
         .insert(user_id.clone());
 
-    (
-        StatusCode::OK,
-        "Friend request sent",
-    )
+    Ok(())
 }
 
 pub async fn respond_to_friend_request(
-    State(state): State<Arc<Mutex<AppState>>>,
+    State(state): State<SharedState>,
     headers: HeaderMap,
     Json(payload): Json<FriendResponse>,
-) -> impl IntoResponse {
-    let user_id = match headers.get("X-User-Id") {
-        Some(value) => match value.to_str() {
-            Ok(v) => v.to_string(),
-            Err(_) => {
-                return (StatusCode::BAD_REQUEST, "Invalid X-User-Id header")
-            }
-        },
-        None => {
-            return (StatusCode::BAD_REQUEST, "Missing X-User-Id header")
-        }
-    };
-
+) -> Result<(), AppError> {
+    let user_id = extract_user_id(&headers)?;
     let requester_id = payload.requester_id;
 
-    let mut app_state = state.lock().unwrap();
+    let mut app_state = state
+        .lock()
+        .map_err(|_| AppError::Internal("State lock poisoned".into()))?;
 
     match app_state.pending.get_mut(&user_id) {
         Some(requests) => {
             if !requests.remove(&requester_id) {
-                return (StatusCode::NOT_FOUND, "Friend request not found");
+                return Err(AppError::NotFound("Already friends".into()));
             }
         }
         None => {
-            return (StatusCode::NOT_FOUND, "No pending requests");
+            return Err(AppError::NotFound("No pending requests".into()));
         }
     }
 
@@ -120,22 +88,18 @@ pub async fn respond_to_friend_request(
             .insert(user_id.clone());
     }
 
-    (StatusCode::OK, "Friend request processed")
+    Ok(())
 }
 
 pub async fn list_friends(
-    State(state): State<Arc<Mutex<AppState>>>,
+    State(state): State<SharedState>,
     headers: HeaderMap,
-) -> impl IntoResponse {
-    let user_id = match headers.get("X-User-Id") {
-        Some(value) => match value.to_str() {
-            Ok(v) => v.to_string(),
-            Err(_) => return (StatusCode::BAD_REQUEST, "Invalid X-User-Id header").into_response(),
-        },
-        None => return (StatusCode::BAD_REQUEST, "Missing X-User-Id header").into_response(),
-    };
+) -> Result<Json<FriendsList>, AppError> {
+    let user_id = extract_user_id(&headers)?;
 
-    let app_state = state.lock().unwrap();
+    let app_state = state
+        .lock()
+        .map_err(|_| AppError::Internal("State lock poisoned".into()))?;
 
     let friends = app_state
         .friends
@@ -143,22 +107,18 @@ pub async fn list_friends(
         .map(|set| set.iter().cloned().collect())
         .unwrap_or_else(Vec::new);
 
-    Json(FriendsList { friends }).into_response()
+    Ok(Json(FriendsList { friends }))
 }
 
 pub async fn list_pending(
-    State(state): State<Arc<Mutex<AppState>>>,
+    State(state): State<SharedState>,
     headers: HeaderMap,
-) -> impl IntoResponse {
-    let user_id = match headers.get("X-User-Id") {
-        Some(value) => match value.to_str() {
-            Ok(v) => v.to_string(),
-            Err(_) => return (StatusCode::BAD_REQUEST, "Invalid X-User-Id header").into_response(),
-        },
-        None => return (StatusCode::BAD_REQUEST, "Missing X-User-Id header").into_response(),
-    };
+) -> Result<Json<PendingList>, AppError> {
+    let user_id = extract_user_id(&headers)?;
 
-    let app_state = state.lock().unwrap();
+    let app_state = state
+        .lock()
+        .map_err(|_| AppError::Internal("State lock poisoned".into()))?;
 
     let received = app_state
         .pending
@@ -174,5 +134,5 @@ pub async fn list_pending(
         }
     }
 
-    Json(PendingList { received, sent }).into_response()
+    Ok(Json(PendingList { received, sent }))
 }
