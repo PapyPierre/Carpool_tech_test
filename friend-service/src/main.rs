@@ -14,14 +14,14 @@ use std::sync::Arc;
 #[tokio::main] // Allows us to use async fn main()
 async fn main() {
     
-    let repo = RedisRepository::new("redis://127.0.0.1/")
+    let repo = RedisRepository::new("redis://redis:6379/")
         .expect("Failed to create Redis repository");
 
     let shared_repo: Arc<dyn FriendRepository> = Arc::new(repo);
 
     let app = create_router(shared_repo);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
 
     println!("Server running on http://{}", addr);
 
