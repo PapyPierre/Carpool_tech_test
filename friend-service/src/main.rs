@@ -2,18 +2,24 @@ mod errors;
 mod handlers;
 mod models;
 mod routes;
-mod state;
+mod repository;
+mod redis_repository;
 
 use routes::create_router;
-use state::{AppState, SharedState};
+use repository::FriendRepository;
+use redis_repository::RedisRepository;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 #[tokio::main] // Allows us to use async fn main()
 async fn main() {
-    let state: SharedState = Arc::new(Mutex::new(AppState::new()));
+    
+    let repo = RedisRepository::new("redis://127.0.0.1/")
+        .expect("Failed to create Redis repository");
 
-    let app = create_router(state);
+    let shared_repo: Arc<dyn FriendRepository> = Arc::new(repo);
+
+    let app = create_router(shared_repo);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 

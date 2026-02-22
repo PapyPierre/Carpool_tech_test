@@ -10,6 +10,7 @@ struct ErrorBody {
     error: String,
 }
 
+#[derive(Debug)]
 pub enum AppError {
     BadRequest(String),
     NotFound(String),
